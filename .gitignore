@@ -1,0 +1,40 @@
+# Python cache
+__pycache__/
+*.py[cod]
+
+# Virtual environments
+venv/
+venv310/
+.venv/
+env/
+
+# macOS
+.DS_Store
+
+# Environment / secrets
+.env
+.env.local
+
+# IDE
+.vscode/
+.idea/
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp
+*.temp
+
+# Local testing scripts
+test_*.py
+
+*.md
+
+# Project specific
+input/
+output/
+*.json
+*.jpg
+*.jpeg
+*.png

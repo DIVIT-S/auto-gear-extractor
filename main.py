@@ -65,38 +65,22 @@ def get_valid_items(ocr_result):
         text = item["text"]
         confidence = item["confidence"]
         print(f"    [Debug] Evaluating text: '{text}' (conf: {confidence})")
-        
         # Rule 1: Empty text
         if not text.strip():
             continue
             
-        # --- PONYTAIL RUNG: Known OCR Failure Mapping ---
-        # The lightweight mobile model fundamentally misreads highly distorted/engraved text.
-        # Instead of breaking memory constraints or running expensive models, we strictly map known failures.
-        if "20269610797" in text or "026201602" in text or "266103" in text:
-            text = "G2661037"
-            confidence = 1.0
-        elif text in ["HTNOS", "WHATNOS"]:
-            text = "HTN05"
-            confidence = 1.0
-        elif text in ["26B", "2706", "7068"]:
-            text = "2706B"
-            confidence = 1.0
-            
-        # Rule 2: Confidence score < 0.80
-        if confidence < 0.80:
-            print(f"    [Ponytail] Rejected: Confidence {confidence:.2f} < 0.80 for text '{text}'")
+        # Generic Threshold: lowered to 0.35 to catch garbled reads organically
+        if confidence < 0.35:
+            print(f"    [Rejected] Confidence {confidence:.2f} < 0.35 for '{text}'")
             continue
             
-        # Rule 3: Heavy gibberish check
+        # Heavy gibberish check
         alnum_ratio = sum(c.isalnum() for c in text) / len(text) if len(text) > 0 else 0
         if alnum_ratio < 0.5 or re.search(r'[@#$%^&*]', text):
-            print(f"    [Ponytail] Rejected: Gibberish detected in text '{text}'")
+            print(f"    [Rejected] Gibberish detected in '{text}'")
             continue
             
-        # Add to valid items with potentially updated text/confidence
-        item["text"] = text
-        item["confidence"] = confidence
+        # Add to valid items with original text and confidence
         valid_items.append(item)
             
     return valid_items
@@ -209,10 +193,35 @@ def main():
             if valid_items_from_state:
                 print(f"-> Success! State {state} produced valid OCR data.")
                 for item in valid_items_from_state:
-                    # STRICT DEDUPLICATION: ensuring no duplicate text extractions
-                    if item["text"] not in seen_texts:
-                        final_valid_items.append(item)
-                        seen_texts.add(item["text"])
+                    # ORGANIC DEDUPLICATION: Merge substrings and highly similar strings
+                    import difflib
+                    new_text = item["text"]
+                    new_conf = item["confidence"]
+                    
+                    matched_existing = None
+                    for existing in list(seen_texts):
+                        # 1. Substring match
+                        if new_text in existing or existing in new_text:
+                            matched_existing = existing
+                            break
+                        # 2. High overlap match
+                        ratio = difflib.SequenceMatcher(None, new_text, existing).ratio()
+                        if ratio > 0.6:
+                            matched_existing = existing
+                            break
+                            
+                    if matched_existing:
+                        existing_item = next(x for x in final_valid_items if x["text"] == matched_existing)
+                        # Replace if new text has higher confidence or is longer with decent confidence
+                        if new_conf > existing_item["confidence"] or len(new_text) > len(matched_existing):
+                            seen_texts.remove(matched_existing)
+                            final_valid_items = [x for x in final_valid_items if x["text"] != matched_existing]
+                            final_valid_items.append(item)
+                            seen_texts.add(new_text)
+                    else:
+                        if new_text not in seen_texts:
+                            final_valid_items.append(item)
+                            seen_texts.add(new_text)
             else:
                 print(f"-> State {state} did not yield new valid texts.")
 
